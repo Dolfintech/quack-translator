@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#152c28">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Quack Translator">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <link rel="icon" href="data:,">
+  <title>Quack Translator</title>
+  <style>
+    :root { color-scheme: light; --ink: #152c28; --paper: #f7f8f2; --dim: #4b6058; --rule: #c9d3c9;
+      --green: #235843; --lavender: #634b81; --cream: #735312; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 1rem/1.5 system-ui, sans-serif; }
+    main { max-width: 43rem; margin: auto; padding: max(1.25rem, env(safe-area-inset-top))
+      max(1.25rem, env(safe-area-inset-right)) max(2rem, env(safe-area-inset-bottom))
+      max(1.25rem, env(safe-area-inset-left)); }
+    header { padding: 1rem 0 1.35rem; }
+    h1, h2, p { margin: 0; }
+    h1 { font: 700 clamp(2rem, 8vw, 3.25rem)/1.08 Georgia, serif; letter-spacing: -.045em; }
+    h2 { font: 700 1.55rem/1.2 Georgia, serif; }
+    .muted { color: var(--dim); }
+    header p { margin-top: .6rem; }
+    .listen { background: var(--ink); color: white; border-radius: 1.25rem; padding: 1.25rem; }
+    .listen p { color: #d1e4d8; margin-top: .75rem; }
+    .actions, .section-title { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+    .section-title { justify-content: space-between; }
+    button, select, .file-button { font: inherit; cursor: pointer; color: inherit; border: 1px solid var(--rule);
+      min-height: 2.75rem; padding: .45rem .85rem; border-radius: .7rem; background: #fff; }
+    button:disabled { opacity: .55; cursor: default; }
+    button:focus-visible, select:focus-visible, .file-button:focus-within { outline: 3px solid #af70da; outline-offset: 3px; }
+    .listen button { background: #bcebba; color: var(--ink); font-weight: 700; border-color: transparent; }
+    .file-button { position: relative; display: inline-flex; align-items: center; background: transparent; border-color: #7e9f90; }
+    .file-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .file-button:has(input:disabled) { opacity: .55; cursor: default; }
+    .privacy { margin: .6rem 0 1.55rem; font-size: .875rem; }
+    #history, #practice-words, .line { list-style: none; padding: 0; margin: .55rem 0 0; }
+    #history > li { margin: 0 0 .55rem; padding: .25rem .8rem; border: 1px solid var(--rule); border-radius: .85rem; background: #fff; }
+    .line { margin: 0; }
+    .word { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .8rem; align-items: center; padding: .55rem 0; }
+    .word + .word { border-top: 1px solid var(--rule); }
+    .meaning { color: var(--dim); overflow-wrap: anywhere; }
+    .meaning strong { display: block; color: var(--ink); font-size: 1.1rem; }
+    .speaker { display: block; font-size: .875rem; }
+    .cream { color: var(--cream); }
+    .lavender { color: var(--lavender); }
+    .notes { display: flex; align-items: stretch; gap: .13rem; height: 2.5rem; max-width: 40vw;
+      color: var(--green); overflow-x: auto; background: repeating-linear-gradient(to top, var(--rule) 0 1px, transparent 1px 25%); }
+    .note { flex: 0 0 auto; height: .24rem; width: .64rem; margin-top: calc((3 - var(--tone)) * .625rem + .19rem);
+      background: currentColor; border-radius: .3rem; }
+    .note.long { width: 1.15rem; }
+    .note.uncertain { background: transparent; border: 1px dashed currentColor; }
+    .practice { border-top: 1px solid var(--rule); margin-top: 1.6rem; padding-top: 1rem; }
+    .practice label { display: flex; gap: .45rem; align-items: center; }
+    #practice-words { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .45rem; }
+    #practice-words button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: .35rem; }
+    #practice-status { font-size: .875rem; margin-top: .3rem; }
+    #empty { margin-top: .55rem; }
+    @media (max-width: 22rem) { .listen { padding: .85rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Quack Translator</h1>
+    <p class="muted">Experimental · Tested with simulated recordings</p>
+  </header>
+  <section class="listen" aria-label="Listen to quacks">
+    <div class="actions">
+      <button type="button" id="listen">Start listening</button>
+      <label class="file-button">Choose audio<input type="file" accept="audio/*" capture aria-label="Choose audio" id="audio-file"></label>
+    </div>
+    <p>The audio picker may offer recording on iOS.</p>
+    <p id="status" role="status">Listen for quacks or open a recording.</p>
+  </section>
+  <p class="privacy muted">Audio and text stay on this device and are never saved by the page.</p>
+  <section aria-labelledby="heard-title">
+    <div class="section-title"><h2 id="heard-title">Heard quacks</h2><button type="button" id="clear" disabled>Clear</button></div>
+    <p id="empty" class="muted">Quack words and their English meanings will appear here. Unmatched detected notes show as unknown.</p>
+    <ol id="history" aria-label="Lines, newest first" aria-live="polite"></ol>
+  </section>
+  <section class="practice" aria-labelledby="practice-title">
+    <div class="section-title">
+      <h2 id="practice-title">Practice</h2>
+      <label>Voice <select id="voice"></select></label>
+    </div>
+    <ul id="practice-words"></ul>
+    <p id="practice-status" role="status" class="muted"></p>
+  </section>
+</main>
+<script id="decoder">
+"use strict";
+
+const DICTIONARY = {"words":[{"word":"mi","english":"I, the speaker","wire":"0s 1s"},{"word":"sina","english":"you, the listener","wire":"3s 2l"},{"word":"wile","english":"want","wire":"0l 3s 0l 3s"},{"word":"lukin","english":"see","wire":"1s 3s"},{"word":"lape","english":"rest","wire":"1l 3s 1s 3l"},{"word":"moku","english":"eat","wire":"2l 0s 2s 0l"},{"word":"telo","english":"water","wire":"1s 0s 1l 0s"},{"word":"ma","english":"place","wire":"2s 0s"}],"voices":[{"name":"Cream","baseHz":724.5,"tempo":0.92},{"name":"Lavender","baseHz":912.8,"tempo":0.92}]}; // Generated by generate_table.py
+const QUACK = (() => {
+  const RATE = 12000;
+  const FFT = 512;
+  const HOP = 120;
+  const FRAME_SECONDS = HOP / RATE;
+  const PITCH_RATIOS = [1, 4 / 3, 3 / 2, 2];
+  const FEELINGS = [{time: 1.12, pitch: .93}, {time: 1, pitch: 1}, {time: .84, pitch: 1.10}];
+  const HOLD = {s: .145, l: .295};
+  const NOTE_GAP = .064;
+  // The word and line gaps in the renderer are .46 and .85 s before tempo scaling.
+  const WORD_BREAK = .25;
+  const LINE_BREAK = .665;
+  const MAX_WORD = 15;
+  const MIN_RMS = .0015;
+  const MIN_CONCENTRATION = .45;
+  const WORDS_BY_WIRE = new Map(DICTIONARY.words.map(entry => [entry.wire, entry]));
+
+  const window = Float64Array.from({length: FFT}, (_, i) => .5 - .5 * Math.cos(2 * Math.PI * i / (FFT - 1)));
+  const reversed = Uint16Array.from({length: FFT}, (_, i) => {
+    let index = 0;
+    for (let bit = FFT; bit > 1; bit >>>= 1, i >>>= 1) index = (index << 1) | (i & 1);
+    return index;
+  });
+  const cosine = Float64Array.from({length: FFT / 2}, (_, i) => Math.cos(-2 * Math.PI * i / FFT));
+  const sine = Float64Array.from({length: FFT / 2}, (_, i) => Math.sin(-2 * Math.PI * i / FFT));
+
+  function median(values) {
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = (sorted.length - 1) / 2;
+    return (sorted[Math.floor(middle)] + sorted[Math.ceil(middle)]) / 2;
+  }
+
+  class Spectrum {
+    constructor() {
+      this.real = new Float64Array(FFT);
+      this.imaginary = new Float64Array(FFT);
+      this.power = new Float64Array(FFT / 2 + 1);
+    }
+
+    measure(samples, next, time) {
+      const {real, imaginary, power} = this;
+      for (let i = 0; i < FFT; i++) real[reversed[i]] = samples[(next + i) % FFT] * window[i];
+      imaginary.fill(0);
+      for (let size = 2; size <= FFT; size *= 2) {
+        const half = size / 2;
+        for (let start = 0; start < FFT; start += size) {
+          for (let offset = 0; offset < half; offset++) {
+            const left = start + offset;
+            const right = left + half;
+            const twiddle = offset * FFT / size;
+            const r = real[right] * cosine[twiddle] - imaginary[right] * sine[twiddle];
+            const im = real[right] * sine[twiddle] + imaginary[right] * cosine[twiddle];
+            real[right] = real[left] - r;
+            imaginary[right] = imaginary[left] - im;
+            real[left] += r;
+            imaginary[left] += im;
+          }
+        }
+      }
+      let energy = 0;
+      let bin = 8;
+      for (let i = 0; i < power.length; i++) {
+        power[i] = real[i] ** 2 + imaginary[i] ** 2;
+        energy += power[i];
+        if (i >= 8 && i < 200 && power[i] > power[bin]) bin = i;
+      }
+      let ridgePower = 0;
+      for (let i = bin - 2; i <= bin + 2; i++) ridgePower += power[i];
+      const left = Math.log(Math.max(1e-20, power[bin - 1]));
+      const peak = Math.log(Math.max(1e-20, power[bin]));
+      const right = Math.log(Math.max(1e-20, power[bin + 1]));
+      const shift = .5 * (left - right) / Math.min(-1e-8, left - 2 * peak + right);
+      const hz = (bin + Math.max(-.5, Math.min(.5, shift))) * RATE / FFT;
+      return {time, hz, rms: Math.sqrt(energy) / 170, concentration: ridgePower / (energy || 1)};
+    }
+  }
+
+  function pitched(frame) {
+    return frame.rms >= MIN_RMS && frame.concentration >= MIN_CONCENTRATION && frame.hz >= 600 && frame.hz <= 2250;
+  }
+
+  function readNotes(frames) {
+    const peak = frames.reduce((top, frame) => pitched(frame) ? Math.max(top, frame.rms) : top, 0);
+    // The Python listener gates against peak and the floor at isolated take edges.
+    // Use a rolling quiet tail, and a slightly higher peak gate to drop its .29 echo.
+    const tail = frames.slice(-6);
+    const floor = tail.every(frame => !pitched(frame)) ? median(tail.map(frame => frame.rms)) : 0;
+    const gate = Math.max(.34 * peak, 1.6 * floor);
+    const runs = [];
+    let run = [];
+    for (const frame of frames) {
+      if (!pitched(frame) || frame.rms <= gate) continue;
+      const previous = run.at(-1);
+      if (previous && (frame.time - previous.time > .032 || Math.abs(Math.log(frame.hz / previous.hz)) > .078)) {
+        runs.push(run);
+        run = [];
+      }
+      run.push(frame);
+    }
+    if (run.length) runs.push(run);
+    return runs.flatMap(group => {
+      const start = group[0].time;
+      const end = group.at(-1).time + FRAME_SECONDS;
+      if (end - start < .05 || group.length < 5) return [];
+      return [{start, end, hz: median(group.map(frame => frame.hz))}];
+    });
+  }
+
+  function fitVoice(notes, voice, feeling) {
+    const base = voice.baseHz * feeling.pitch;
+    const time = feeling.time / voice.tempo;
+    let cost = 0;
+    const symbols = notes.map(note => {
+      const errors = PITCH_RATIOS.map(ratio => Math.abs(Math.log(note.hz / (base * ratio))));
+      const pitchError = Math.min(...errors);
+      const tone = errors.indexOf(pitchError);
+      // The RMS envelope masks a few milliseconds at the edges of a held note.
+      const duration = (note.end - note.start + .01) / time;
+      const length = duration < (HOLD.s + HOLD.l) / 2 ? "s" : "l";
+      cost += pitchError ** 2 + (.42 * (duration - HOLD[length])) ** 2;
+      return {tone: pitchError <= .06 ? tone : null, length,
+        valid: pitchError <= .06 && Math.abs(duration - HOLD[length]) <= .077};
+    });
+    return {voice, symbols, cost: Math.sqrt(cost / notes.length)};
+  }
+
+  function readWord(notes, lineBreak) {
+    // Determine voice and note symbols independently of the dictionary.
+    const fits = DICTIONARY.voices.map(voice =>
+      FEELINGS.map(feeling => fitVoice(notes, voice, feeling)).sort((a, b) => a.cost - b.cost)[0]);
+    fits.sort((a, b) => a.cost - b.cost);
+    const best = fits[0];
+    const certain = best.cost <= .067 && fits[1].cost - best.cost >= .006;
+    const wire = best.symbols.map(note => `${note.tone ?? "?"}${note.length}`).join(" ");
+    const word = certain && best.symbols.every(note => note.valid) ? WORDS_BY_WIRE.get(wire) : undefined;
+    return {word: word?.word ?? null, english: word?.english ?? null, wire,
+      speaker: certain ? best.voice.name : null, notes: best.symbols, newLine: lineBreak};
+  }
+
+  class Decoder {
+    constructor(sampleRate, onWord) {
+      if (!Number.isFinite(sampleRate) || sampleRate < RATE) throw new Error("Unsupported audio sample rate");
+      this.samples = new Float64Array(FFT);
+      this.spectrum = new Spectrum();
+      this.next = 0;
+      this.count = 0;
+      this.nextFrame = FFT / 2;
+      this.sourceRate = sampleRate;
+      this.remaining = sampleRate;
+      this.sum = 0;
+      this.onWord = onWord;
+      this.frames = [];
+      this.lastPitch = -Infinity;
+      this.previousWord = -Infinity;
+    }
+
+    push(channels) {
+      for (let i = 0; i < channels[0].length; i++) {
+        let value = 0;
+        for (const channel of channels) value += channel[i];
+        value /= channels.length;
+        // A fractional box filter works for both 44.1 kHz and 48 kHz, with
+        // the same phase and frame positions across arbitrary input chunks.
+        if (this.remaining > RATE) {
+          this.sum += value * RATE;
+          this.remaining -= RATE;
+        } else {
+          this.sample((this.sum + value * this.remaining) / this.sourceRate);
+          const left = RATE - this.remaining;
+          this.sum = value * left;
+          this.remaining = this.sourceRate - left;
+        }
+      }
+    }
+
+    sample(value) {
+      this.samples[this.next] = value;
+      this.next = (this.next + 1) % FFT;
+      if (++this.count !== this.nextFrame) return;
+      this.nextFrame += HOP;
+      const time = (this.count - FFT / 2) / RATE;
+      const frame = this.spectrum.measure(this.samples, this.next, time);
+      const voiced = pitched(frame);
+      if (voiced) this.lastPitch = time;
+      if (this.frames.length || voiced) this.frames.push(frame);
+      if (time - this.lastPitch >= WORD_BREAK || this.frames.length >= MAX_WORD / FRAME_SECONDS) this.emit();
+    }
+
+    emit() {
+      if (!this.frames.length) return;
+      const notes = readNotes(this.frames);
+      this.frames = [];
+      if (!notes.length) return;
+      this.onWord(readWord(notes, notes[0].start - this.previousWord >= LINE_BREAK));
+      this.previousWord = notes.at(-1).end;
+    }
+
+    finish() {
+      if (this.remaining !== this.sourceRate) this.sample(this.sum / this.sourceRate);
+      for (let i = 0; i < FFT; i++) this.sample(0);
+      this.emit();
+    }
+  }
+
+  function practiceNotes(entry, voice) {
+    let start = 0;
+    return entry.wire.split(" ").map(symbol => {
+      const duration = HOLD[symbol[1]] / voice.tempo;
+      const note = {start, duration, hz: voice.baseHz * PITCH_RATIOS[Number(symbol[0])]};
+      start += duration + NOTE_GAP / voice.tempo;
+      return note;
+    });
+  }
+
+  function practiceWave(entry, voice, sampleRate) {
+    const notes = practiceNotes(entry, voice);
+    const last = notes.at(-1);
+    const samples = new Float32Array(Math.ceil((last.start + last.duration) * sampleRate));
+    for (const note of notes) {
+      const first = Math.round(note.start * sampleRate);
+      for (let i = 0; i / sampleRate < note.duration && first + i < samples.length; i++) {
+        const time = i / sampleRate;
+        const edge = Math.min(1, time / .017, (note.duration - time) / .026);
+        samples[first + i] = .24 * (.5 - .5 * Math.cos(Math.PI * edge)) * Math.sin(2 * Math.PI * note.hz * time);
+      }
+    }
+    return samples;
+  }
+
+  return {Decoder, practiceWave, dictionary: DICTIONARY};
+})();
+</script>
+<script id="interface">
+"use strict";
+
+const listen = document.querySelector("#listen");
+const fileInput = document.querySelector("#audio-file");
+const status = document.querySelector("#status");
+const practiceStatus = document.querySelector("#practice-status");
+const clear = document.querySelector("#clear");
+const empty = document.querySelector("#empty");
+const historyList = document.querySelector("#history");
+const voiceSelect = document.querySelector("#voice");
+const AudioEngine = globalThis.AudioContext || globalThis.webkitAudioContext;
+const canListen = isSecureContext && navigator.mediaDevices?.getUserMedia && AudioEngine;
+let line;
+let microphone;
+let importing = false;
+let playback;
+let playRequest = 0;
+let playerContext;
+
+function clearHistory() {
+  historyList.replaceChildren();
+  line = undefined;
+  empty.hidden = false;
+  clear.disabled = true;
+}
+
+function showWord(heard) {
+  if (!line || heard.newLine) {
+    const item = document.createElement("li");
+    line = document.createElement("ol");
+    line.className = "line";
+    item.append(line);
+    historyList.prepend(item);
+  }
+  const item = document.createElement("li");
+  item.className = "word";
+  const meaning = document.createElement("div");
+  meaning.className = "meaning";
+  const word = document.createElement("strong");
+  word.textContent = heard.word ?? "Unknown quack";
+  const detail = document.createElement("span");
+  detail.textContent = heard.english ?? "No known word";
+  const speaker = document.createElement("span");
+  speaker.className = `speaker ${heard.speaker?.toLowerCase() ?? ""}`;
+  speaker.textContent = heard.speaker ?? "Voice unclear";
+  meaning.append(word, detail, speaker);
+  const graph = document.createElement("div");
+  graph.className = "notes";
+  graph.setAttribute("role", "img");
+  graph.setAttribute("aria-label", heard.notes.map(note =>
+    `${note.length === "s" ? "short" : "long"} ${note.tone === null ? "unclear tone" : `tone ${note.tone}`}`).join(", "));
+  graph.title = heard.wire;
+  for (const note of heard.notes) {
+    const bar = document.createElement("span");
+    bar.className = `note ${note.length === "l" ? "long" : ""} ${note.tone === null ? "uncertain" : ""}`;
+    bar.style.setProperty("--tone", note.tone ?? 1.5);
+    graph.append(bar);
+  }
+  item.append(meaning, graph);
+  line.append(item);
+  empty.hidden = true;
+  clear.disabled = false;
+}
+
+function refreshControls() {
+  listen.disabled = !canListen || importing;
+  listen.textContent = microphone ? "Stop listening" : "Start listening";
+  fileInput.disabled = Boolean(microphone) || importing;
+}
+
+function stopMicrophone(session, flush) {
+  if (microphone !== session) return;
+  microphone = undefined;
+  if (session.processor) session.processor.onaudioprocess = null;
+  session.source?.disconnect();
+  session.processor?.disconnect();
+  session.stream?.getTracks().forEach(track => track.stop());
+  void session.context.close().catch(() => {});
+  if (flush) session.decoder?.finish();
+  refreshControls();
+}
+
+async function toggleMicrophone() {
+  if (microphone) {
+    stopMicrophone(microphone, true);
+    status.textContent = "Listening stopped.";
+    return;
+  }
+  let session;
+  try {
+    session = {context: new AudioEngine()};
+    microphone = session;
+    refreshControls();
+    line = undefined;
+    status.textContent = "Waiting for microphone permission…";
+    const resumed = session.context.resume().then(() => null, error => error);
+    const stream = await navigator.mediaDevices.getUserMedia({audio: {channelCount: 1,
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false}});
+    if (microphone !== session) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
+    }
+    session.stream = stream;
+    const error = await resumed;
+    if (microphone !== session) return;
+    if (error) throw error;
+    session.decoder = new QUACK.Decoder(session.context.sampleRate, showWord);
+    session.source = session.context.createMediaStreamSource(stream);
+    // ScriptProcessor uses only inline code and is supported by Safari. Its
+    // output is silent, so the microphone audio is never played back.
+    session.processor = session.context.createScriptProcessor(4096, 1, 1);
+    session.processor.onaudioprocess = ({inputBuffer, outputBuffer}) => {
+      outputBuffer.getChannelData(0).fill(0);
+      session.decoder.push([inputBuffer.getChannelData(0)]);
+    };
+    session.source.connect(session.processor);
+    session.processor.connect(session.context.destination);
+    for (const track of stream.getAudioTracks()) track.addEventListener("ended", () => {
+      if (microphone !== session) return;
+      stopMicrophone(session, true);
+      status.textContent = "The microphone stopped. You can start again or choose a recording.";
+    });
+    status.textContent = "Listening for quacks…";
+  } catch (error) {
+    if (session && microphone !== session) return;
+    if (session) stopMicrophone(session, false);
+    status.textContent = error.name === "NotAllowedError" ? "Microphone permission was denied. Choose a recording to continue."
+      : "The microphone could not start. Choose a recording to continue.";
+  }
+}
+
+async function decodeFile(file) {
+  let context;
+  importing = true;
+  refreshControls();
+  status.textContent = "Reading the recording…";
+  try {
+    context = new AudioEngine();
+    const buffer = await context.decodeAudioData(await file.arrayBuffer());
+    const channels = Array.from({length: buffer.numberOfChannels}, (_, index) => buffer.getChannelData(index));
+    line = undefined;
+    let count = 0;
+    const decoder = new QUACK.Decoder(buffer.sampleRate, word => {
+      count++;
+      showWord(word);
+    });
+    const chunk = Math.round(buffer.sampleRate / 2);
+    for (let i = 0; i < buffer.length; i += chunk) {
+      decoder.push(channels.map(channel => channel.subarray(i, i + chunk)));
+      if (i + chunk < buffer.length) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    decoder.finish();
+    status.textContent = count ? "Finished reading the recording." : "No quack notes detected in this recording.";
+  } catch {
+    status.textContent = "Couldn’t read this audio. Try a shorter recording or a Safari-supported file such as WAV or M4A.";
+  } finally {
+    if (context) void context.close().catch(() => {});
+    importing = false;
+    refreshControls();
+  }
+}
+
+async function playWord(entry) {
+  const request = ++playRequest;
+  try {
+    playerContext ??= new AudioEngine();
+    await playerContext.resume();
+    if (request !== playRequest) return;
+    playback?.stop();
+    const voice = QUACK.dictionary.voices[Number(voiceSelect.value)];
+    const rate = playerContext.sampleRate;
+    const samples = QUACK.practiceWave(entry, voice, rate);
+    const buffer = playerContext.createBuffer(1, samples.length, rate);
+    buffer.copyToChannel(samples, 0);
+    const source = playerContext.createBufferSource();
+    playback = source;
+    source.buffer = buffer;
+    source.connect(playerContext.destination);
+    source.onended = () => {
+      if (playback !== source) return;
+      playback = undefined;
+      practiceStatus.textContent = "";
+    };
+    practiceStatus.textContent = `Playing ${entry.word} in ${voice.name}’s voice.`;
+    source.start();
+  } catch {
+    if (request === playRequest) practiceStatus.textContent = "Audio playback could not start.";
+  }
+}
+
+for (const [index, voice] of QUACK.dictionary.voices.entries()) voiceSelect.add(new Option(voice.name, index));
+for (const entry of QUACK.dictionary.words) {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = `Play ${entry.word}`;
+  button.disabled = !AudioEngine;
+  button.addEventListener("click", () => void playWord(entry));
+  item.append(button);
+  document.querySelector("#practice-words").append(item);
+}
+listen.addEventListener("click", () => void toggleMicrophone());
+clear.addEventListener("click", clearHistory);
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  fileInput.value = "";
+  if (file && !importing && !microphone) void decodeFile(file);
+});
+addEventListener("pagehide", () => {
+  if (microphone) stopMicrophone(microphone, false);
+  ++playRequest;
+  playback?.stop();
+});
+if (!canListen) status.textContent = "Live listening needs a secure Safari page. You can choose a recording here.";
+refreshControls();
+</script>
+</body>
+</html>
